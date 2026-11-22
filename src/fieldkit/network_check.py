@@ -238,7 +238,7 @@ def execute(args):
         address = ipaddress.IPv4Address(args.bind)
         if not address.is_private or address.is_unspecified:
             raise ValueError("Bind to an explicit private LAN or loopback address.")
-        collector(str(address), args.port, args.folder, secrets.token_urlsafe(18), args.seconds)
+        collector(str(address), args.port, args.folder, "fk-" + secrets.token_urlsafe(18), args.seconds)
     elif args.action == "join":
         require_device(args.device)
         targets = {"gateway": ipv4(args.gateway), "external": ipv4(args.external)}
