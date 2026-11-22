@@ -9,9 +9,9 @@ import re
 import secrets
 import socket
 import time
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
+from http.client import HTTPConnection, HTTPException
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from statistics import median
@@ -157,13 +157,23 @@ def request_json(server, token, route, data=None):
         raise ValueError("Collector URL must be http://LAN-IP:port.")
     if not ipaddress.IPv4Address(url.hostname).is_private:
         raise ValueError("Use a private or loopback IPv4 address for the collector.")
-    request = urllib.request.Request(
-        server.rstrip("/") + route, json.dumps(data).encode() if data is not None else None,
-        {"Authorization": "Bearer " + token, "Content-Type": "application/json"},
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=5) as response:
-        return json.loads(response.read(MAX_BODY + 1))
+    connection = HTTPConnection(url.hostname, url.port, timeout=5)
+    try:
+        payload = json.dumps(data).encode() if data is not None else None
+        connection.request("POST" if payload else "GET", route, body=payload,
+                           headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+        response = connection.getresponse()
+        raw = response.read(MAX_BODY + 1)
+        if len(raw) > MAX_BODY:
+            raise ValueError("Collector response exceeded the size limit.")
+        result = json.loads(raw)
+        if not 200 <= response.status < 300:
+            raise RuntimeError(f"Collector returned HTTP {response.status}: {result.get('error', 'request failed')}")
+        return result
+    except HTTPException as exc:
+        raise RuntimeError(f"Collector connection failed: {exc}") from exc
+    finally:
+        connection.close()
 
 
 def align_clock(request):
